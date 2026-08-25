@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pengingat Barang</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen font-sans text-gray-800 p-6 flex justify-center" x-data="appData()">
+
+    <div class="w-full max-w-lg bg-white rounded-2xl shadow-lg overflow-hidden">
+        
+        <!-- Header -->
+        <div class="bg-blue-600 p-5 text-white text-center">
+            <h1 class="text-2xl font-bold">🧠 Pengingat Barang</h1>
+            <p class="text-blue-100 text-sm mt-1">Jangan khawatir lupa, saya yang akan mengingatnya untukmu.</p>
+        </div>
+
+        <!-- Konten Utama -->
+        <div class="p-6 space-y-6">
+            
+            <!-- Area Interaksi (Chat AI / Pesan) -->
+            <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 min-h-[100px] flex flex-col items-center justify-center text-center">
+                <p class="text-blue-800 font-medium" x-html="aiMessage"></p>
+                <p x-show="isListening" class="text-red-500 text-sm font-bold mt-2 animate-pulse">🎤 Sedang mendengarkan...</p>
+            </div>
+
+            <!-- Tombol Suara Utama -->
+            <button @click="startListening" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-lg transition flex items-center justify-center gap-2 shadow-md">
+                <span class="text-xl">🎙️</span> Bicara: "Nama Barang di Lokasi"
+            </button>
+
+            <div class="flex items-center text-gray-400 text-sm">
+                <div class="flex-1 border-b border-gray-300"></div>
+                <span class="px-3">atau ketik manual</span>
+                <div class="flex-1 border-b border-gray-300"></div>
+            </div>
+
+            <!-- Form Input Barang Manual -->
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Nama Barang</label>
+                    <input type="text" x-model="inputItem" placeholder="Contoh: Kunci Mobil Cadangan" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Letak / Lokasi</label>
+                    <input type="text" x-model="inputLocation" placeholder="Contoh: Laci meja kerja" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Foto Lokasi (Opsional)</label>
+                    <input type="file" @change="handleImage" accept="image/*" class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                </div>
+
+                <template x-if="inputPhoto">
+                    <img :src="inputPhoto" class="h-32 w-full object-cover rounded-lg border border-gray-200 mt-2">
+                </template>
+
+                <button @click="processInput" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition">
+                    Simpan Data
+                </button>
+            </div>
+
+            <hr class="border-gray-200">
+
+            <!-- Area Pencarian Barang -->
+            <div class="space-y-4">
+                <h2 class="text-lg font-bold text-gray-800">Cari Barangmu</h2>
+                <div class="flex gap-2">
+                    <input type="text" x-model="searchQuery" @keyup.enter="searchItem" placeholder="Ketik kata kunci (misal: kunci)" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <button @click="searchItem" class="bg-gray-800 hover:bg-gray-900 text-white px-4 py-2 rounded-lg font-medium">Cari</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        function appData() {
+            return {
+                aiMessage: 'Halo! Tekan tombol merah dan katakan apa yang kamu simpan. Contoh: <b>"Kunci mobil di atas kulkas"</b>',
+                inputItem: '',
+                inputLocation: '',
+                inputPhoto: '',
+                searchQuery: '',
+                isListening: false,
+                database: JSON.parse(localStorage.getItem('database_pengingat')) || [],
+
+                startListening() {
+                    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                    
+                    if (!SpeechRecognition) {
+                        this.aiMessage = "Browser Anda tidak mendukung fitur suara. Gunakan Google Chrome atau Microsoft Edge.";
+                        return;
+                    }
+
+                    const recognition = new SpeechRecognition();
+                    recognition.lang = 'id-ID';
+                    
+                    recognition.onstart = () => {
+                        this.isListening = true;
+                    };
+
+                    recognition.onresult = (event) => {
+                        this.isListening = false;
+                        const transcript = event.results[0][0].transcript.toLowerCase();
+                        this.processVoiceTranscript(transcript);
+                    };
+
+                    recognition.onerror = (event) => {
+                        this.isListening = false;
+                        this.aiMessage = "Terjadi kesalahan saat mengenali suara: " + event.error;
+                    };
+
+                    recognition.onend = () => {
+                        this.isListening = false;
+                    };
+
+                    recognition.start();
+                },
+
+                processVoiceTranscript(text) {
+                    if (text.includes(" di ")) {
+                        let parts = text.split(" di ");
+                        let rawItem = parts[0];
+                        let cleanItem = rawItem.replace("saya menaruh", "").replace("saya menyimpan", "").replace("ada", "").trim();
+                        let cleanLocation = parts.slice(1).join(" di ").trim();
+
+                        this.inputItem = cleanItem;
+                        this.inputLocation = cleanLocation;
+                        this.processInput();
+                    } else {
+                        this.aiMessage = `Saya mendengar <i>"${text}"</i>, tapi tidak menemukan kata letaknya. Gunakan format <b>"Nama Barang di Lokasi"</b>.`;
+                        this.inputItem = text;
+                    }
+                },
+
+                handleImage(event) {
+                    const file = event.target.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            this.inputPhoto = e.target.result;
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                },
+
+                processInput() {
+                    let item = this.inputItem.trim();
+                    let location = this.inputLocation.trim();
+
+                    if (item === '' && location === '') {
+                        this.aiMessage = "Informasi kurang lengkap. Mohon sebutkan nama barang dan lokasinya.";
+                        return;
+                    }
+                    if (item === '') {
+                        this.aiMessage = `Kamu meletakkannya di "${location}", tapi barang apa yang kamu letakkan?`;
+                        return;
+                    }
+                    if (location === '') {
+                        this.aiMessage = `Barangnya adalah "${item}". Di mana tepatnya kamu meletakkannya?`;
+                        return;
+                    }
+
+                    let existingIndex = this.database.findIndex(data => data.item.toLowerCase() === item.toLowerCase());
+                    
+                    const newData = {
+                        item: item,
+                        location: location,
+                        photo: this.inputPhoto,
+                        time: new Date().toLocaleString('id-ID')
+                    };
+
+                    if (existingIndex !== -1) {
+                        this.database[existingIndex] = newData;
+                        this.aiMessage = `Lokasi <b>"${item}"</b> telah diperbarui ke <b>"${location}"</b>.`;
+                    } else {
+                        this.database.push(newData);
+                        this.aiMessage = `Berhasil disimpan! <b>"${item}"</b> dicatat di <b>"${location}"</b>.`;
+                    }
+
+                    localStorage.setItem('database_pengingat', JSON.stringify(this.database));
+
+                    this.inputItem = '';
+                    this.inputLocation = '';
+                    this.inputPhoto = '';
+                },
+
+                searchItem() {
+                    let query = this.searchQuery.trim().toLowerCase();
+                    
+                    if (query === '') {
+                        this.aiMessage = "Ketikkan nama barang yang ingin kamu cari.";
+                        return;
+                    }
+
+                    // Split query menjadi kata-kata terpisah untuk pencarian fleksibel
+                    let searchWords = query.split(/\s+/);
+
+                    // Mencari barang yang mengandung kata kunci (Partial/Fuzzy Match)
+                    let matchedItems = this.database.filter(data => {
+                        let itemName = data.item.toLowerCase();
+                        let itemLocation = data.location.toLowerCase();
+                        return searchWords.every(word => itemName.includes(word) || itemLocation.includes(word));
+                    });
+
+                    if (matchedItems.length > 0) {
+                        if (matchedItems.length === 1) {
+                            let foundData = matchedItems[0];
+                            let response = `Barang <b>"${foundData.item}"</b> terakhir kamu letakkan di <b>"${foundData.location}"</b><br><span class="text-xs text-gray-500">(Dicatat pada ${foundData.time})</span>`;
+                            
+                            if (foundData.photo) {
+                                response += `<br><br><img src="${foundData.photo}" class="h-48 w-full object-cover rounded-lg border border-gray-300">`;
+                            }
+                            this.aiMessage = response;
+                        } else {
+                            let response = `Ditemukan <b>${matchedItems.length} barang</b> yang cocok:<br><ul class="mt-2 text-left space-y-1">`;
+                            
+                            matchedItems.forEach(item => {
+                                response += `<li class="p-2 bg-white rounded border text-xs"><b>${item.item}</b> 📍 ${item.location}</li>`;
+                            });
+                            
+                            response += `</ul><br><span class="text-xs">Ketik nama barang lebih spesifik untuk melihat foto.</span>`;
+                            this.aiMessage = response;
+                        }
+                    } else {
+                        this.aiMessage = `Maaf, tidak ada catatan yang cocok dengan pencarian <b>"${this.searchQuery}"</b>.`;
+                    }
+                    
+                    this.searchQuery = '';
+                }
+            }
+        }
+    </script>
+</body>
+</html>
